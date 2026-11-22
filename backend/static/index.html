@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hosted MT5 Forex WebBot</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 780px; margin: 40px auto; padding: 0 16px; background: #0f172a; color: #e2e8f0; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+    h1, h2 { margin-top: 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 4px; }
+    input { width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #fff; }
+    button { padding: 10px 16px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; margin-right: 8px; margin-top: 12px; }
+    .btn-save { background: #2563eb; color: #fff; }
+    .btn-start { background: #16a34a; color: #fff; }
+    .btn-stop { background: #dc2626; color: #fff; }
+    .btn-refresh { background: #475569; color: #fff; }
+    .status-badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+    .on { background: #14532d; color: #86efac; }
+    .off { background: #451a1a; color: #fca5a5; }
+    pre { background: #090d16; padding: 12px; border-radius: 8px; max-height: 280px; overflow-y: auto; font-size: 12px; line-height: 1.45; }
+  </style>
+</head>
+<body>
+  <h1>Hosted MT5 Forex WebBot</h1>
+
+  <div class="card">
+    <h2>1. Connect MT5 Account & Bot Settings</h2>
+    <div class="grid">
+      <div><label>User ID</label><input id="user_id" value="user_1" /></div>
+      <div><label>MT5 Login (Account #)</label><input id="mt5_login" type="number" placeholder="12345678" /></div>
+      <div><label>MT5 Password</label><input id="mt5_password" type="password" placeholder="••••••••" /></div>
+      <div><label>MT5 Server</label><input id="mt5_server" placeholder="ICMarkets-Demo01" /></div>
+      <div><label>Symbol</label><input id="symbol" value="EURUSD" /></div>
+      <div><label>Lot Size</label><input id="lot" type="number" step="0.01" value="0.01" /></div>
+      <div><label>Max Daily Loss ($)</label><input id="max_daily_loss" type="number" step="1" value="50" /></div>
+    </div>
+    <button class="btn-save" onclick="saveAccount()">Save Settings</button>
+  </div>
+
+  <div class="card">
+    <h2>2. Worker Control</h2>
+    <div>Status: <span id="statusBadge" class="status-badge off">STOPPED</span></div>
+    <button class="btn-start" onclick="startBot()">Start Bot</button>
+    <button class="btn-stop" onclick="stopBot()">Stop Bot</button>
+    <button class="btn-refresh" onclick="refreshAll()">Refresh Logs</button>
+  </div>
+
+  <div class="card">
+    <h2>3. Activity Logs</h2>
+    <pre id="logsBox">No logs yet.</pre>
+  </div>
+
+  <script>
+    const uid = () => document.getElementById("user_id").value.trim();
+
+    async function saveAccount() {
+      const payload = {
+        user_id: uid(),
+        mt5_login: Number(document.getElementById("mt5_login").value),
+        mt5_password: document.getElementById("mt5_password").value,
+        mt5_server: document.getElementById("mt5_server").value.trim(),
+        symbol: document.getElementById("symbol").value.trim(),
+        lot: Number(document.getElementById("lot").value),
+        max_daily_loss: Number(document.getElementById("max_daily_loss").value),
+      };
+      const res = await fetch("/api/account/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      alert(res.ok ? "Saved!" : (data.detail || "Error saving"));
+      refreshAll();
+    }
+
+    async function startBot() {
+      const res = await fetch(`/api/bot/start/${encodeURIComponent(uid())}`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) alert(data.detail || "Failed to start");
+      refreshAll();
+    }
+
+    async function stopBot() {
+      const res = await fetch(`/api/bot/stop/${encodeURIComponent(uid())}`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) alert(data.detail || "Failed to stop");
+      refreshAll();
+    }
+
+    async function refreshAll() {
+      const userId = uid();
+      const accRes = await fetch(`/api/account/${encodeURIComponent(userId)}`);
+      const badge = document.getElementById("statusBadge");
+      if (accRes.ok) {
+        const acc = await accRes.json();
+        badge.textContent = acc.running ? `RUNNING (PID ${acc.pid})` : "STOPPED";
+        badge.className = "status-badge " + (acc.running ? "on" : "off");
+      } else {
+        badge.textContent = "NO ACCOUNT";
+        badge.className = "status-badge off";
+      }
+
+      const logRes = await fetch(`/api/logs/${encodeURIComponent(userId)}`);
+      if (logRes.ok) {
+        const { logs } = await logRes.json();
+        document.getElementById("logsBox").textContent = logs.length
+          ? logs.map(l => `[${l.created_at}] [${l.level}] ${l.message}`).join("\n")
+          : "No logs yet.";
+      }
+    }
+
+    setInterval(refreshAll, 4000);
+    refreshAll();
+  </script>
+</body>
+</html>
